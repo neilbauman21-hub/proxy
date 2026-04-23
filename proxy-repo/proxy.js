@@ -11,7 +11,7 @@
   'use strict';
 
   // ← this points to YOUR repo on jsDelivr
-  const SHELL_URL = 'https://cdn.jsdelivr.net/gh/neilbauman21-hub/proxy@latest/proxy-shell.html';
+  const SHELL_URL = 'https://cdn.jsdelivr.net/gh/neilbauman21-hub/proxy@latest/proxy-repo/proxy-shell.html';
 
   const DEFAULTS = {
     container: '#proxy',
