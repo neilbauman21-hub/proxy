@@ -2,7 +2,7 @@
  * proxy.js — drop this on any static site
  *
  * <div id="proxy"></div>
- * <script src="https://cdn.jsdelivr.net/gh/YOURUSER/proxy@latest/proxy.js"></script>
+ * <script src="https://cdn.jsdelivr.net/gh/neilbauman21-hub/proxy@main/proxy-repo/proxy.js"></script>
  * <script>
  *   proxy.init({ container: '#proxy', theme: 'dark' });
  * </script>
@@ -10,8 +10,7 @@
 (function (global) {
   'use strict';
 
-  // ← this points to YOUR repo on jsDelivr
-  const SHELL_URL = 'https://cdn.jsdelivr.net/gh/neilbauman21-hub/proxy@latest/proxy-repo/proxy-shell.html';
+  const SHELL_URL = 'https://cdn.jsdelivr.net/gh/neilbauman21-hub/proxy@main/proxy-repo/proxy-shell.html';
 
   const DEFAULTS = {
     container: '#proxy',
@@ -25,7 +24,7 @@
     _iframe: null,
     _cfg: null,
 
-    init(userConfig = {}) {
+    async init(userConfig = {}) {
       const cfg = { ...DEFAULTS, ...userConfig };
       this._cfg = cfg;
 
@@ -38,8 +37,21 @@
         return;
       }
 
+      // Fetch the shell HTML and turn it into a blob URL
+      // so the browser renders it as a page instead of showing source
+      let shellSrc;
+      try {
+        const res = await fetch(SHELL_URL);
+        const html = await res.text();
+        const blob = new Blob([html], { type: 'text/html' });
+        shellSrc = URL.createObjectURL(blob);
+      } catch (e) {
+        console.error('[proxy.js] failed to fetch shell:', e);
+        return;
+      }
+
       const iframe = document.createElement('iframe');
-      iframe.src = SHELL_URL;
+      iframe.src = shellSrc;
       iframe.style.cssText = `
         width: ${cfg.width};
         height: ${cfg.height};
@@ -65,7 +77,6 @@
       }, '*');
     },
 
-    // Programmatically navigate
     go(url) {
       this._iframe?.contentWindow?.postMessage({ type: 'proxy-navigate', url }, '*');
     },
