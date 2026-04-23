@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Proxy</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0a0a;
+      --surface: #111;
+      --border: #222;
+      --accent: #00ff88;
+      --accent-dim: rgba(0,255,136,0.12);
+      --text: #e8e8e8;
+      --muted: #555;
+      --bar-h: 44px;
+      --font-mono: 'IBM Plex Mono', monospace;
+      --font-sans: 'IBM Plex Sans', sans-serif;
+    }
+    [data-theme="light"] {
+      --bg: #f4f4f0; --surface: #fafaf8; --border: #ddd;
+      --accent: #007a3e; --accent-dim: rgba(0,122,62,0.1);
+      --text: #111; --muted: #999;
+    }
+
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font-sans); overflow: hidden; }
+
+    #bar {
+      display: flex; align-items: center; gap: 8px;
+      height: var(--bar-h); padding: 0 10px;
+      background: var(--surface); border-bottom: 1px solid var(--border);
+    }
+    #nav-back, #nav-fwd, #nav-reload {
+      flex-shrink: 0; width: 28px; height: 28px;
+      border: 1px solid var(--border); border-radius: 4px;
+      background: transparent; color: var(--muted); cursor: pointer;
+      font-size: 13px; display: flex; align-items: center; justify-content: center;
+      transition: color .15s, border-color .15s;
+    }
+    #nav-back:hover, #nav-fwd:hover, #nav-reload:hover { color: var(--text); border-color: var(--accent); }
+    #url-wrap {
+      flex: 1; display: flex; align-items: center;
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 6px; padding: 0 10px; height: 30px; gap: 6px;
+      transition: border-color .2s;
+    }
+    #url-wrap:focus-within { border-color: var(--accent); }
+    #lock { font-size: 11px; color: var(--accent); flex-shrink: 0; }
+    #url-input {
+      flex: 1; background: transparent; border: none; outline: none;
+      color: var(--text); font-family: var(--font-mono); font-size: 11.5px;
+    }
+    #go-btn {
+      flex-shrink: 0; height: 22px; padding: 0 10px;
+      background: var(--accent); color: #000; border: none; border-radius: 4px;
+      font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+      cursor: pointer; transition: opacity .15s;
+    }
+    #go-btn:hover { opacity: 0.85; }
+
+    #status {
+      position: absolute; bottom: 0; left: 0; right: 0; height: 22px;
+      display: flex; align-items: center; padding: 0 12px; gap: 8px;
+      background: var(--surface); border-top: 1px solid var(--border);
+      font-family: var(--font-mono); font-size: 10px; color: var(--muted);
+    }
+    #status-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--muted); flex-shrink: 0; transition: background .3s;
+    }
+    #status-dot.connected { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+    #status-dot.error { background: #ff4444; }
+
+    #content { position: absolute; top: var(--bar-h); bottom: 22px; left: 0; right: 0; overflow: hidden; }
+
+    #proxy-frame { width: 100%; height: 100%; border: none; background: #fff; display: none; }
+
+    #splash {
+      width: 100%; height: 100%; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 24px;
+      background: var(--bg); position: relative;
+    }
+    #splash::before {
+      content: ''; position: absolute; inset: 0;
+      background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 32px 32px; opacity: 0.4; pointer-events: none;
+    }
+    .splash-logo {
+      font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+      letter-spacing: 0.25em; text-transform: uppercase; color: var(--accent);
+      background: var(--accent-dim); border: 1px solid var(--accent);
+      padding: 4px 14px; border-radius: 3px; position: relative;
+    }
+    .splash-hint { font-family: var(--font-mono); font-size: 11px; color: var(--muted); letter-spacing: 0.08em; position: relative; }
+    .splash-hint span { color: var(--text); }
+
+    #loader {
+      position: absolute; inset: 0; background: var(--bg);
+      display: none; align-items: center; justify-content: center;
+      flex-direction: column; gap: 14px; z-index: 10;
+    }
+    #loader.active { display: flex; }
+    .loader-bar { width: 160px; height: 2px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .loader-bar::after {
+      content: ''; display: block; width: 40%; height: 100%;
+      background: var(--accent); border-radius: 2px;
+      animation: sweep 1s ease-in-out infinite alternate;
+    }
+    @keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(350%); } }
+    .loader-label { font-family: var(--font-mono); font-size: 10px; color: var(--muted); letter-spacing: 0.1em; }
+  </style>
+</head>
+<body>
+
+  <div id="bar">
+    <button id="nav-back" title="Back">&#8592;</button>
+    <button id="nav-fwd" title="Forward">&#8594;</button>
+    <button id="nav-reload" title="Reload">&#8635;</button>
+    <div id="url-wrap">
+      <span id="lock">&#128274;</span>
+      <input id="url-input" type="text" placeholder="Enter a URL..." autocomplete="off" spellcheck="false" />
+      <button id="go-btn">GO</button>
+    </div>
+  </div>
+
+  <div id="content">
+    <div id="splash">
+      <div class="splash-logo">scramjet proxy</div>
+      <div class="splash-hint" id="splash-hint">initializing...</div>
+    </div>
+    <div id="loader">
+      <div class="loader-bar"></div>
+      <div class="loader-label" id="loader-label">loading...</div>
+    </div>
+    <iframe id="proxy-frame" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock"></iframe>
+  </div>
+
+  <div id="status">
+    <div id="status-dot"></div>
+    <span id="status-text">initializing</span>
+    <span style="margin-left:auto;" id="ws-host"></span>
+  </div>
+
+  <!-- Scramjet bundle — served from your repo via jsDelivr -->
+  <script src="scramjet.bundle.js"></script>
+
+<script>
+  // ─────────────────────────────────────────
+  // CONFIG — change BARE_SERVER to your domain
+  // ─────────────────────────────────────────
+  const BARE_SERVER = 'wss://nexus-unblocked.lol/bare/';
+  const SW_PATH     = 'sw.js';          // path to scramjet service worker
+  const SW_SCOPE    = '/scramjet/';     // scope the SW lives under
+
+  // ─────────────────────────────────────────
+  // Elements
+  // ─────────────────────────────────────────
+  const urlInput   = document.getElementById('url-input');
+  const goBtn      = document.getElementById('go-btn');
+  const splash     = document.getElementById('splash');
+  const splashHint = document.getElementById('splash-hint');
+  const loader     = document.getElementById('loader');
+  const loaderLabel= document.getElementById('loader-label');
+  const frame      = document.getElementById('proxy-frame');
+  const statusDot  = document.getElementById('status-dot');
+  const statusText = document.getElementById('status-text');
+  const wsHostEl   = document.getElementById('ws-host');
+
+  wsHostEl.textContent = BARE_SERVER.replace('wss://','').replace('ws://','').split('/')[0];
+
+  // ─────────────────────────────────────────
+  // Theme from parent postMessage (optional)
+  // ─────────────────────────────────────────
+  window.addEventListener('message', (e) => {
+    if (e.data?.type === 'proxy-config') {
+      const t = e.data.config?.theme;
+      if (t) document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
+    }
+    if (e.data?.type === 'proxy-navigate') {
+      navigate(e.data.url);
+    }
+  });
+
+  // ─────────────────────────────────────────
+  // Service Worker + Scramjet init
+  // ─────────────────────────────────────────
+  let scramjetReady = false;
+
+  async function initScramjet() {
+    setStatus('', 'registering service worker...');
+
+    if (!('serviceWorker' in navigator)) {
+      setStatus('error', 'service workers not supported');
+      splashHint.textContent = 'service workers not supported in this browser';
+      return;
+    }
+
+    try {
+      // Register the SW
+      const reg = await navigator.serviceWorker.register(SW_PATH, { scope: SW_SCOPE });
+      await navigator.serviceWorker.ready;
+
+      // Init Scramjet with your bare server
+      // ScramjetController is exposed by scramjet.bundle.js
+      const sj = new ScramjetController({
+        prefix: SW_SCOPE,
+        codec: 'plain', // or 'base64' — plain is faster
+        bareServer: BARE_SERVER,
+        files: {
+          wasm:   'scramjet.codecs.js',
+          worker: 'scramjet.worker.js',
+        }
+      });
+
+      await sj.init(SW_PATH);
+
+      // Store for use during navigation
+      window.__scramjet = sj;
+      scramjetReady = true;
+
+      setStatus('connected', 'ready');
+      splashHint.innerHTML = 'type a url above and press <span>GO</span>';
+
+    } catch (err) {
+      console.error('[proxy] init failed:', err);
+      setStatus('error', 'init failed: ' + err.message);
+      splashHint.textContent = 'failed to initialize — check console';
+    }
+  }
+
+  // ─────────────────────────────────────────
+  // Navigation
+  // ─────────────────────────────────────────
+  function navigate(rawUrl) {
+    let url = rawUrl.trim();
+    if (!url) return;
+    if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+    urlInput.value = url;
+
+    if (!scramjetReady) {
+      splashHint.textContent = 'still initializing, please wait...';
+      return;
+    }
+
+    splash.style.display = 'none';
+    frame.style.display = 'none';
+    loader.classList.add('active');
+    loaderLabel.textContent = 'loading ' + new URL(url).hostname + '...';
+    setStatus('connected', 'loading...');
+
+    // Scramjet rewrites the URL to route through the SW + bare server
+    const proxiedUrl = window.__scramjet.encodeUrl(url);
+
+    frame.onload = () => {
+      loader.classList.remove('active');
+      frame.style.display = 'block';
+      setStatus('connected', 'proxying via scramjet');
+    };
+    frame.onerror = () => {
+      loader.classList.remove('active');
+      setStatus('error', 'failed to load');
+    };
+
+    frame.src = proxiedUrl;
+  }
+
+  // ─────────────────────────────────────────
+  // Helpers
+  // ─────────────────────────────────────────
+  function setStatus(state, text) {
+    statusDot.className = state || '';
+    statusText.textContent = text;
+  }
+
+  // ─────────────────────────────────────────
+  // Event listeners
+  // ─────────────────────────────────────────
+  goBtn.addEventListener('click', () => navigate(urlInput.value));
+  urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') navigate(urlInput.value); });
+
+  document.getElementById('nav-reload').addEventListener('click', () => {
+    if (frame.src && frame.src !== 'about:blank') {
+      loader.classList.add('active');
+      frame.style.display = 'none';
+      const current = frame.src;
+      frame.src = '';
+      setTimeout(() => { frame.src = current; }, 50);
+    }
+  });
+
+  document.getElementById('nav-back').addEventListener('click', () => {
+    frame.contentWindow?.history.back();
+  });
+  document.getElementById('nav-fwd').addEventListener('click', () => {
+    frame.contentWindow?.history.forward();
+  });
+
+  // ─────────────────────────────────────────
+  // Boot
+  // ─────────────────────────────────────────
+  initScramjet();
+</script>
+</body>
+</html>
